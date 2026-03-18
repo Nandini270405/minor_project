@@ -10,7 +10,9 @@ import streamlit as st
 from model_utils import (
     DEFAULT_BUNDLE_PATH,
     DEFAULT_DATASET_PATH,
+    compare_models,
     predict_category,
+    train_and_save_model,
     train_logistic_regression,
 )
 
@@ -176,6 +178,8 @@ def init_state() -> None:
         st.session_state.monthly_income = 50000.0
     if "expense_categories" not in st.session_state:
         st.session_state.expense_categories = DEFAULT_EXPENSE_CATEGORIES.copy()
+    if "model_compare" not in st.session_state:
+        st.session_state.model_compare = {"status": None, "results": None, "selected_key": None}
 
 
 def show_notifications(expenses_df: pd.DataFrame, income: float) -> None:
@@ -240,6 +244,58 @@ def main() -> None:
                 deduped = list(dict.fromkeys(parsed))
                 st.session_state.expense_categories = deduped
                 st.success("Categories updated.")
+
+        st.subheader("Model Comparison")
+        if st.button("Run model comparison"):
+            with st.spinner("Training and evaluating multiple models..."):
+                results = compare_models(
+                    dataset_path=dataset_path,
+                    bundle_path=bundle_path,
+                    min_samples=3,
+                    max_features=3000,
+                    save_logreg_bundle=True,
+                    return_fitted=False,
+                )
+            st.session_state.model_compare = {
+                "status": "completed",
+                "results": results,
+                "selected_key": None,
+            }
+            st.success("Comparison complete. See results below.")
+
+        compare_state = st.session_state.model_compare
+        if compare_state["results"]:
+            st.caption("Models sorted by weighted F1 (higher is better).")
+            st.dataframe(
+                pd.DataFrame(compare_state["results"])[
+                    ["model", "accuracy", "precision_weighted", "recall_weighted", "f1_weighted"]
+                ],
+                use_container_width=True,
+            )
+
+            savable = [r for r in compare_state["results"] if r.get("supports_proba")]
+            model_labels = {r["key"]: f"{r['model']} (F1 {r['f1_weighted']:.3f})" for r in savable}
+            default_key = savable[0]["key"] if savable else None
+            chosen_key = st.selectbox(
+                "Choose model to save as active bundle (requires predict_proba for confidence)",
+                options=list(model_labels.keys()) if savable else [],
+                format_func=lambda k: model_labels[k],
+                index=0 if savable else None,
+            ) if savable else None
+
+            if chosen_key:
+                if st.button("Save selected model as active bundle"):
+                    with st.spinner("Training selected model on full data and saving bundle..."):
+                        metrics = train_and_save_model(
+                            model_key=chosen_key,
+                            dataset_path=dataset_path,
+                            bundle_path=bundle_path,
+                            min_samples=3,
+                            max_features=3000,
+                        )
+                    st.success(
+                        f"Saved {metrics['model']} as active bundle (F1={metrics['f1_weighted']:.3f})."
+                    )
 
         st.subheader("Data")
         if st.button("Reload Saved Transactions"):
