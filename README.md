@@ -1,4 +1,4 @@
-# Expense Tracker ML Application
+# ML-powered financial analytics system with prediction + insights
 
 ## Project Description
 The Expense Tracker ML application is designed to help users manage their expenses effectively through machine learning algorithms. This application allows users to track their daily expenses, categorize them, and monitor their spending habits trend over time.
